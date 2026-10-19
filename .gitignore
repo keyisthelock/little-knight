@@ -1,0 +1,17 @@
+node_modules/
+dist/
+release/
+.sites-runtime/
+*.log
+LocalProfile/
+.openai/
+.env
+.env.*
+!.env.example
+.dev.vars
+.wrangler/
+*.sqlite
+*.sqlite-*
+*.db
+*.zip
+!.gitkeep

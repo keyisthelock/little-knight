@@ -1,0 +1,25 @@
+{
+  "package": "stockfish",
+  "version": "18.0.8",
+  "sha256": "d8269431bf6fd3dbc759c91b4b19d00e3b597e0b3db6f298458fe4b2dc343f10",
+  "source": "https://github.com/nmrugg/stockfish.js/tree/v18.0.8",
+  "archive": "https://codeload.github.com/nmrugg/stockfish.js/tar.gz/refs/tags/v18.0.8",
+  "binaries": [
+    {
+      "name": "stockfish-18-lite-single.js",
+      "sha256": "5243fd9b276cab7dfe3ad1d43ab9ead73568fac76468c614242977a210c4a391"
+    },
+    {
+      "name": "stockfish-18-lite-single.wasm",
+      "sha256": "a8fbc05ec6920b56d7485826dcb02c5ffd2826bcbf751cf973046f237a9096f1"
+    },
+    {
+      "name": "stockfish-18-single.js",
+      "sha256": "ce07b916870473a837b598b9b558c125e24568624e47dabc3381474558ee201d"
+    },
+    {
+      "name": "stockfish-18-single.wasm",
+      "sha256": "f611ac05ddb248fe975a4f180ac9fec7f7fb650f8f17f5fe4230fcc0fe6419c7"
+    }
+  ]
+}

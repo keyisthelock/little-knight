@@ -1,0 +1,48 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Little Knight: build website",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "scripts/build.mjs"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Little Knight: run checks",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "--test",
+        "tests/core.test.mjs",
+        "tests/coach.test.mjs",
+        "tests/auth.test.mjs",
+        "tests/engine.test.mjs"
+      ],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Little Knight: website preview",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "scripts/serve.mjs"
+      ],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Little Knight: open desktop app",
+      "type": "process",
+      "command": "${workspaceFolder}\\release\\Little Knight\\Little Knight.exe",
+      "problemMatcher": []
+    }
+  ]
+}

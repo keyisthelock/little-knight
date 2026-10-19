@@ -1,0 +1,11 @@
+{
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/.sites-runtime": true,
+    "**/LocalProfile": true,
+    "**/dist": true,
+    "**/release": true
+  },
+  "editor.wordWrap": "on",
+  "editor.tabSize": 2
+}

@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+const source='https://codeload.github.com/nmrugg/stockfish.js/tar.gz/refs/tags/v18.0.8';
+const response=await fetch(source);
+if(!response.ok)throw new Error('Cannot download corresponding source');
+const bytes=Buffer.from(await response.arrayBuffer());
+const actual=crypto.createHash('sha256').update(bytes).digest('hex');
+fs.mkdirSync('public/engine-source',{recursive:true});
+fs.writeFileSync('public/engine-source/stockfish-18.0.8-source.tgz',bytes);
+fs.copyFileSync('node_modules/stockfish/Copying.txt','public/engine-source/GPL-3.0.txt');
+fs.writeFileSync('public/engine-source/integrity.json',JSON.stringify({package:'stockfish',version:'18.0.8',sha256:actual,source:'https://github.com/nmrugg/stockfish.js/tree/v18.0.8',archive:source,binaries:['stockfish-18-lite-single.js','stockfish-18-lite-single.wasm','stockfish-18-single.js','stockfish-18-single.wasm'].map(name=>({name,sha256:crypto.createHash('sha256').update(fs.readFileSync('node_modules/stockfish/bin/'+name)).digest('hex')}))},null,2));
+console.log('Corresponding source archive and binary checksums retained.');

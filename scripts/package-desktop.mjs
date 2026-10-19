@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const dest=path.resolve('release/Little Knight');
+if(!dest.startsWith(path.resolve('release')+path.sep))throw new Error('Invalid packaging directory');
+fs.mkdirSync(dest,{recursive:true});
+fs.cpSync('node_modules/electron/dist',dest,{recursive:true});
+fs.copyFileSync(path.join(dest,'electron.exe'),path.join(dest,'Little Knight.exe'));
+fs.unlinkSync(path.join(dest,'electron.exe'));
+const app=path.join(dest,'resources/app');fs.mkdirSync(app,{recursive:true});
+fs.cpSync('dist',path.join(app,'dist'),{recursive:true});
+fs.cpSync('desktop',path.join(app,'desktop'),{recursive:true});
+fs.writeFileSync(path.join(app,'package.json'),JSON.stringify({name:'little-knight',version:'0.1.0',main:'desktop/main.cjs',description:'Your offline chess companion'}));
+fs.writeFileSync(path.join(dest,'READ ME.txt'),'LITTLE KNIGHT — development preview 0.1\r\n\r\nOpen Little Knight.exe to play and review games offline.\r\nKeep this whole folder together. Your journal is stored in LocalProfile beside the app.\r\nUse Preferences > Export backup before moving or replacing the app.\r\n\r\nThis build is unsigned. Payments and unrestricted AI chat are not enabled.\r\nRating guesses are an uncalibrated recreational heuristic.\r\nStockfish and third-party notices are available inside the app.\r\n');
+console.log('Portable app ready:',dest);
