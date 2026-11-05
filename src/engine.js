@@ -50,13 +50,16 @@ export class Engine {
           }
           if (controller.signal.aborted) throw new Error("Analysis stopped.");
           this.worker = new Worker(workerURL);
+          const sourceWorker=this.worker;
           this.initTimer = setTimeout(() => {
             this.reset("Stockfish took too long to load. Reload and try again.");
           }, 3e4);
           this.worker.onerror = () => {
+            if(this.worker!==sourceWorker)return;
             this.reset("Stockfish could not start. Check that the engine assets are installed.");
           };
           this.worker.onmessage = (event) => {
+            if(this.worker!==sourceWorker||controller.signal.aborted)return;
             for (const line of String(event.data).split("\n")) {
               if (line === "uciok") {
                 this.send("setoption name Threads value 1");
@@ -107,10 +110,13 @@ export class Engine {
     }
   }
   async evaluate(fen, budget = 200, level = 20, fullFenHistory = null, variant = "lite") {
-    await this.init(variant);
+    const ready=this.init(variant);
+    const generation = this.generation || 0;
+    await ready;
+    if(generation!==(this.generation||0)||!this.worker)throw new Error('Analysis stopped.');
     if (this.pending) throw new Error("Analysis is already running.");
     const game = new Chess(fen);
-    if (game.isGameOver()) return { fen, whiteScore: game.isCheckmate() ? game.turn() === "w" ? -1e4 : 1e4 : 0, mate: game.isCheckmate() ? 0 : null, pv: "", depth: 0, bestMove: "(none)" };
+    if (game.isCheckmate()||game.isStalemate()||game.isInsufficientMaterial()||Number(fen.split(' ')[4])>=150) return { fen, whiteScore: game.isCheckmate() ? game.turn() === "w" ? -1e4 : 1e4 : 0, mate: game.isCheckmate() ? 0 : null, pv: "", depth: 0, bestMove: "(none)" };
     return new Promise((resolve, reject) => {
       this.pending = { fen, turn: game.turn(), resolve, reject, result: null, timer: setTimeout(() => {
         this.reset();
@@ -122,6 +128,7 @@ export class Engine {
     });
   }
   reset(message = "Analysis stopped.") {
+    this.generation=(this.generation||0)+1;
     this.loadController?.abort();
     this.loadController = null;
     clearTimeout(this.initTimer);

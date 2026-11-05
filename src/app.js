@@ -3,18 +3,23 @@ import { Engine } from "./engine.js";
 import { SAMPLE_PGN, parseGame, uciMove, sanLine, buildReview, reviewSummary, addReview, EMPTY_PROFILE, validateProfile } from "./core.js";
 import { TOPICS, habits, dueDrills, recordAttempt, legalLine } from './coach.js';
 import { mountAccount, initAccount, accountDialog } from './account.js';
+import {GameSession,PRESETS} from './session.js';
+import {BoardView} from './board.js';
+import {OPENINGS,CHALLENGES} from './library.js';
+import {pieceSVG} from './pieces.js';
+let session=new GameSession(), boardView=null, audio=null, resultShown=false;
 let storageKey='little-knight-profile', revealed=new Set(), variation=null, drillHinted=false, hintStage=0;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const icons = { review: "▤", play: "♞", practice: "◎", journal: "↗", settings: "⚙" };
+const icons = {home:"⌂",library:"◇", review: "▤", play: "♞", practice: "◎", journal: "↗", settings: "⚙" };
 let profile;
 try {
   profile = validateProfile(JSON.parse(localStorage.getItem("little-knight-profile")));
 } catch {
   profile = structuredClone(EMPTY_PROFILE);
 }
-let view = "review", parsed = null, review = [], scores = [], ply = 0, selected = null, flipped = false, busy = false, runId = 0, engineStatus = "Ready when you are", progress = 0, loading = false, drill = null, hintSquare = null, lastMove = null;
-let game = new Chess(), playStarted = false, messages = [{ who: "knight", text: "Hey, I’m your Little Knight. Bring a game, a curious mind, and maybe a cup of tea. We’ll figure out the tricky bits together." }];
+let view = "home", parsed = null, review = [], scores = [], ply = 0, selected = null, flipped = false, busy = false, runId = 0, engineStatus = "Ready when you are", progress = 0, loading = false, drill = null, hintSquare = null, lastMove = null;
+let game = session.game, playStarted = false, messages = [{ who: "knight", text: "Hey, I’m your Little Knight. Bring a game, a curious mind, and maybe a cup of tea. We’ll figure out the tricky bits together." }];
 let savedPlayGame = game, savedPlayLastMove = null;
 let promotionChoice = null;
 const engine = new Engine((status) => {
@@ -52,19 +57,23 @@ function stop() {
   loading = false;
   progress = 0;
   promotionChoice = null;
+  boardView?.cancel();
 }
 function showDialog(html) {
   const d = $("#modal");
+  d.onclose=()=>{promotionChoice=null;};
   d.innerHTML = html;
   d.showModal();
   d.querySelector("[data-close]")?.addEventListener("click", () => d.close());
 }
 function shell() {
-  $("#app").innerHTML = `<aside class="sidebar"><a class="brand" href="#" aria-label="Little Knight home"><img src="./icon.svg" alt="">Little<span>Knight<span class="brand-dot">.</span></span></a><div class="space-label">YOUR CHESS CORNER</div><nav aria-label="Main navigation">${[["review", "Game review"], ["play", "Play with Knight"], ["practice", "Practice mistakes"], ["journal", "Your journey"]].map(([id, label]) => `<button data-view="${id}" class="nav-item ${view === id ? "active" : ""}"><span class="nav-icon">${icons[id]}</span>${label}${id === "practice" && profile.drills.filter((d) => !d.solved).length ? `<span class="nav-count">${profile.drills.filter((d) => !d.solved).length}</span>` : ""}</button>`).join("")}</nav><div class="side-note"><div class="tiny-star">✧</div><strong>A little better,<br>one move at a time.</strong><p>No rush. No judgement.<br>Just you and the board.</p></div><div class="sidebar-bottom"><button data-view="settings" class="nav-item ${view === "settings" ? "active" : ""}"><span class="nav-icon">⚙</span>Preferences</button><div class="local-badge"><i></i> Your games stay on your device</div><div class="profile-mini"><div class="avatar">${esc(profile.settings.name.slice(0, 1).toUpperCase())}</div><div><strong>${esc(profile.settings.name)}</strong><small>Your personal chess space</small></div></div></div></aside><div class="page"><header class="topbar"><span class="breadcrumb">Your chess corner <span>/</span> ${esc({ review: "Game review", play: "Play with Knight", practice: "Practice", journal: "Your journey", settings: "Preferences" }[view])}</span><div class="header-right"><span class="connection"><i></i>${navigator.onLine ? "Local-first" : "Offline"}</span><button class="button secondary account-button" id="account">Sign in</button><button class="icon-button" id="about" aria-label="About Little Knight">?</button></div></header><main id="main"></main><footer><span>Made for the love of the next move.</span><span><span id="engine-status">${esc(engineStatus)}</span><span class="footer-dot">·</span><a href="./licenses.html" target="_blank" rel="noopener">Stockfish & credits ↗</a></span></footer></div>`;
+  applyAppearance();
+  boardView?.cancel();boardView=null;
+  $("#app").innerHTML = `<aside class="sidebar"><a class="brand" href="#" aria-label="Little Knight home"><img src="./icon.svg" alt="">Little<span>Knight<span class="brand-dot">.</span></span></a><div class="space-label">YOUR CHESS CORNER</div><nav aria-label="Main navigation">${[["home", "The club"], ["review", "Game review"], ["play", "Play with Knight"], ["practice", "Practice mistakes"], ["journal", "Your journey"], ["library","Openings & puzzles"]].map(([id, label]) => `<button data-view="${id}" class="nav-item ${view === id ? "active" : ""}"><span class="nav-icon">${icons[id]}</span>${label}${id === "practice" && profile.drills.filter((d) => !d.solved).length ? `<span class="nav-count">${profile.drills.filter((d) => !d.solved).length}</span>` : ""}</button>`).join("")}</nav><div class="side-note"><div class="tiny-star">✧</div><strong>A little better,<br>one move at a time.</strong><p>No rush. No judgement.<br>Just you and the board.</p></div><div class="sidebar-bottom"><button data-view="settings" class="nav-item ${view === "settings" ? "active" : ""}"><span class="nav-icon">⚙</span>Preferences</button><div class="local-badge"><i></i> Your games stay on your device</div><div class="profile-mini"><div class="avatar">${esc(profile.settings.name.slice(0, 1).toUpperCase())}</div><div><strong>${esc(profile.settings.name)}</strong><small>Your personal chess space</small></div></div></div></aside><div class="page"><header class="topbar"><span class="breadcrumb">Your chess corner <span>/</span> ${esc({ home:"The club",library:"Openings & puzzles",review: "Game review", play: "Play with Knight", practice: "Practice", journal: "Your journey", settings: "Preferences" }[view])}</span><div class="header-right"><span class="connection"><i></i>${navigator.onLine ? "Local-first" : "Offline"}</span><button class="button secondary account-button" id="account">Sign in</button><button class="icon-button" id="about" aria-label="About Little Knight">?</button></div></header><main id="main"></main><footer><span>Made for the love of the next move.</span><span><span id="engine-status">${esc(engineStatus)}</span><span class="footer-dot">·</span><a href="./licenses.html" target="_blank" rel="noopener">Stockfish & credits ↗</a></span></footer></div>`;
   document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => navigate(b.dataset.view)));
   $(".brand").addEventListener("click", (e) => {
     e.preventDefault();
-    navigate("review");
+    navigate("home");
   });
   $("#about").onclick = about;
   mountAccount(()=>busy?toast("Finish or stop the current engine operation first."):accountDialog(showDialog));
@@ -75,10 +84,7 @@ function shell() {
   renderView();
 }
 function navigate(next) {
-  if (busy) {
-    toast("Stop the current analysis or wait for it to finish.");
-    return;
-  }
+  if (busy) stop();
   if (view === "play") {
     savedPlayGame = game;
     savedPlayLastMove = lastMove;
@@ -93,13 +99,15 @@ function navigate(next) {
   selected = null;
   hintSquare = null;
   shell();
-  window.scrollTo({ top: 0 });
+  window.scrollTo({ top: 0,behavior:'instant' });
 }
 function heading(eyebrow, title, subtitle, action = "") {
   return `<div class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`;
 }
 function renderView() {
   const main = $("#main");
+  if(view==="home"){renderHome();return;}
+  if(view==="library"){renderLibrary();return;}
   if (view === "review") {
     if(!parsed){
       main.innerHTML=heading("YOUR OWN CHESS STORY", "Your next lesson starts with your game.", "Import a game to get personal feedback. Your journal belongs to this profile.")+`<section class="journal-card empty-state"><img src="./icon.svg" alt=""><h2>No game loaded yet.</h2><p>Paste a PGN or choose a game file. We’ll turn your decisions into a focused lesson.</p><button class="button primary" id="empty-import">Import my game →</button><button class="text-button" id="empty-demo">Explore a labelled demo</button></section>`+coachingPanel();
@@ -134,18 +142,11 @@ function renderBoard() {
   const board = $("#board");
   if (!board) return;
   const fen = view === "review" ? (variation ? variation.fens[variation.index] : parsed.fens[ply]) : game.fen();
-  const position = new Chess(fen);
-  let targets = [];
-  if (selected && view !== "review") targets = position.moves({ square: selected, verbose: true }).map((m) => m.to);
-  const files = (flipped ? "hgfedcba" : "abcdefgh").split(""), ranks = flipped ? [1, 2, 3, 4, 5, 6, 7, 8] : [8, 7, 6, 5, 4, 3, 2, 1];
-  board.innerHTML = ranks.map((rank, ri) => files.map((file, fi) => {
-    const square = file + rank, piece = position.get(square), dark = ("abcdefgh".indexOf(file) + rank) % 2 === 1;
-    const lm = view === "review" ? variation ? variation.moves[variation.index-1] : ply ? parsed.moves[ply - 1] : null : lastMove;
-    const check = piece?.type === "k" && piece.color === position.turn() && position.isCheck();
-    const label = piece ? `${piece.color === "w" ? "White" : "Black"} ${{ p: "pawn", n: "knight", b: "bishop", r: "rook", q: "queen", k: "king" }[piece.type]} on ${square}` : square;
-    return `<button class="square ${dark ? "dark" : "light"} ${selected === square ? "selected" : ""} ${lm && (lm.from === square || lm.to === square) ? "last-move" : ""} ${targets.includes(square) ? "target" : ""} ${hintSquare === square ? "hint" : ""} ${check ? "check" : ""}" data-square="${square}" aria-label="${label}">${piece ? `<span class="piece ${piece.color === "w" ? "white-piece" : "black-piece"}" aria-hidden="true">${symbols[piece.color + piece.type]}</span>` : ""}${fi === 0 ? `<span class="coord rank">${rank}</span>` : ""}${ri === 7 ? `<span class="coord file">${file}</span>` : ""}</button>`;
-  }).join("")).join("");
-  board.querySelectorAll("[data-square]").forEach((el) => el.onclick = () => clickSquare(el.dataset.square));
+  const position=new Chess(fen);
+  const targets=selected&&view!=="review"?position.moves({square:selected,verbose:true}).map(m=>m.to):[];
+  if(!boardView||boardView.el!==board)boardView=new BoardView(board,{click:clickSquare,drop:(from,to)=>{if(canControl(from)){selected=from;void clickSquare(to);}},canDrag:canControl,settings:()=>profile.settings});
+  const lm=view==='review'?(variation?variation.moves[variation.index-1]:parsed.moves[ply-1]):lastMove;
+  boardView.render({fen,flipped,selected,targets,lastMove:lm,hintSquare});
   if ($("#eval-bar")) {
     const score = scores[ply]?.whiteScore || 0;
     const percent = 50 + Math.max(-45, Math.min(45, score / 15));
@@ -338,14 +339,10 @@ function renderPlay() {
     renderBoard();
   };
   $("#new-game").onclick = () => {
-    if (busy) {
-      toast("Please wait for Knight’s move.");
-      return;
-    }
     if (practice) {
       drill = null;
       shell();
-    } else newGame();
+    } else gameSetup();
   };
   $("#undo").onclick = undo;
   $("#hint").onclick = hint;
@@ -354,7 +351,7 @@ function renderPlay() {
   renderBoard();
   renderChat();
   updateGameStatus();
-  if (!practice && game.history().length === 0 && profile.settings.playerColor === "b" && !busy) void botMove();
+  if(!practice){enhancePlay();if(!busy&&session.mode==='computer'&&game.turn()!==profile.settings.playerColor&&!session.result)void botMove();}
 }
 function renderChat() {
   const el = $("#chat-messages");
@@ -371,10 +368,11 @@ function reply(kind) {
   else say(game.isCheck() ? "Your king is in check. Look at king moves, capturing the checking piece, or blocking the line." : "Before you move, ask: what is my opponent threatening, and which of my pieces are undefended?", true);
 }
 async function clickSquare(square) {
+  if($('#board'))$('#board').dataset.inputState=JSON.stringify({view,busy,finished:!!session.result,mode:session.mode,turn:game.turn(),side:profile.settings.playerColor});
   if (view === "review") return;
   if (busy) return;
   const practice = view === "practice";
-  if (!practice && game.turn() !== profile.settings.playerColor) return;
+  if(!practice&&(session.result||session.mode!=='local'&&game.turn()!==profile.settings.playerColor))return;
   const piece = game.get(square);
   if (selected) {
     const options = game.moves({ square: selected, verbose: true }).filter((m) => m.to === square);
@@ -401,7 +399,8 @@ async function clickSquare(square) {
 async function makeMove(move) {
   if (view === "practice") {
     const actual = move.from + move.to + (move.promotion || "");
-    if (actual !== drill.bestUci) {
+    const attempt=new Chess(game.fen());let isMate=false;try{attempt.move(move);isMate=attempt.isCheckmate();}catch{return;}
+    if (actual !== drill.bestUci && !(drill.goal==='mate'&&isMate)) {
       if(drill.id){const d=profile.drills.find(x=>x.id===drill.id);if(d){Object.assign(d,recordAttempt(d,false));save();}}
       say("That is legal. Before trying again, name your opponent’s strongest reply. The saved engine line prefers another move; other good moves may exist.",true);
       selected = null;
@@ -425,7 +424,8 @@ async function makeMove(move) {
     return;
   }
   try {
-    lastMove = game.move(move);
+    lastMove = session.move(move);
+    soundMove(lastMove);persistPlay();
     selected = null;
     hintSquare = null;
     playStarted = true;
@@ -434,16 +434,17 @@ async function makeMove(move) {
     if (lastMove.san.includes("#")) say("Checkmate. Nicely finished! Shall we review how you got there?", true);
     else if (lastMove.isKingsideCastle() || lastMove.isQueensideCastle()) say("King tucked away. A little breathing room.");
     else if (lastMove.captured && profile.settings.tone === "chatty") say("A capture on the board. Let’s see how the position changes.");
-    if (!game.isGameOver()) await botMove();
-    else finishGame();
+    refreshPlayPanel();
+    if(session.result)finishGame();else if(session.mode==='computer')await botMove();
   } catch (e) {
     toast(e.message);
   }
 }
 async function botMove() {
-  if (busy || view !== "play" || game.isGameOver()) return;
+  if (busy || view !== "play" || session.result || session.mode!=="computer" || game.turn()===profile.settings.playerColor || document.hidden) return;
   busy = true;
   const id = ++runId;
+  const expectedFen=game.fen(),expectedRevision=session.revision;
   updateGameStatus();
   try {
     const history = game.history({ verbose: true });
@@ -451,15 +452,17 @@ async function botMove() {
     const positionCommand = history.length ? `position fen ${start} moves ${history.map((m) => m.from + m.to + (m.promotion || "")).join(" ")}` : null;
     const fullStrength = profile.settings.level === 20;
     const result = await engine.evaluate(game.fen(), fullStrength ? profile.settings.budget : 200, profile.settings.level, positionCommand, fullStrength ? "full" : "lite");
-    if (id !== runId) return;
-    lastMove = game.move(uciMove(result.bestMove));
+    if (id !== runId||view!=='play'||session.result||session.revision!==expectedRevision||game.fen()!==expectedFen)return;
+    lastMove = session.move(uciMove(result.bestMove));
+    soundMove(lastMove);persistPlay();
     busy = false;
     selected = null;
     renderBoard();
     updateGameStatus();
     if (game.isCheckmate()) say("Checkmate. Let’s revisit the turning point together—there’s a useful lesson in here.", true);
     else if (game.isCheck()) say("A little check. Your king needs attention.");
-    if (game.isGameOver()) finishGame();
+    refreshPlayPanel();
+    if (session.result) finishGame();
   } catch (e) {
     if (id === runId) {
       busy = false;
@@ -468,46 +471,29 @@ async function botMove() {
     }
   }
 }
-function finishGame() {
-  profile.sessions++;
-  save();
-  updateGameStatus();
-  if (game.isDraw()) say("A drawn game. Let’s see which positions were worth another look.", true);
+function finishGame(){
+  if(!session.result)return;
+  if(!session.counted){profile.sessions++;session.counted=true;save();persistPlay();}
+  updateGameStatus();refreshPlayPanel();
+  if(resultShown)return;resultShown=true;
+  const r=session.result;
+  showDialog(`<div class="result-emblem">♞</div><div class="eyebrow">THE FINAL POSITION</div><h2>${esc(r.reason)}</h2><p class="result-score">${esc(r.score)}</p><p>A finished game. A new perspective.</p><div class="button-group"><button class="button primary" id="result-review">Review this game</button><button class="button secondary" data-close>Keep the board</button></div>`);
+  $('#result-review').disabled=!game.history().length;$('#result-review').onclick=()=>{$('#modal').close();reviewPlayed();};
 }
 function updateGameStatus() {
   const el = $("#game-status");
   if (!el) return;
+  if(view==='play'){el.textContent=session.result?session.result.reason+' · '+session.result.score:busy?'Knight is thinking…':game.isCheck()?'Check · '+(game.turn()==='w'?'White':'Black')+' to move':session.mode==='local'?(game.turn()==='w'?'White':'Black')+' to move':game.turn()===profile.settings.playerColor?'Your move':'Knight to move';return;}
   el.textContent = busy ? "Knight is thinking…" : game.isCheckmate() ? "Checkmate" : game.isDraw() ? "Draw" : game.isCheck() ? "Check · " + (game.turn() === "w" ? "White" : "Black") + " to move" : view === "practice" ? "Find a thoughtful move" : game.turn() === profile.settings.playerColor ? "Your move" : "Knight to move";
 }
-function newGame() {
-  stop();
-  game = new Chess();
-  savedPlayGame = game;
-  savedPlayLastMove = null;
-  lastMove = null;
-  selected = null;
-  hintSquare = null;
-  playStarted = false;
-  drill = null;
-  flipped = profile.settings.playerColor === "b";
-  say("A fresh board and a fresh start. Let’s enjoy this one.", true);
-  shell();
+function newGame(options={}){
+  stop();session=new GameSession(options);game=session.game;savedPlayGame=game;savedPlayLastMove=null;lastMove=null;selected=null;hintSquare=null;playStarted=false;drill=null;resultShown=false;flipped=profile.settings.playerColor==='b';view='play';persistPlay();shell();
 }
-function undo() {
-  if (busy) {
-    toast("Wait for Knight to finish thinking.");
-    return;
-  }
-  if (game.history().length) {
-    game.undo();
-    if (game.turn() !== profile.settings.playerColor && game.history().length) game.undo();
-    lastMove = game.history({ verbose: true }).at(-1) || null;
-    selected = null;
-    hintSquare = null;
-    renderBoard();
-    updateGameStatus();
-    say("A little rewind. Try a different idea.");
-  }
+function undo(){
+  if(view!=='play')return;
+  const thinking=busy;stop();const pair=session.mode==='computer'&&!thinking&&game.turn()===profile.settings.playerColor;
+  session.undo(pair);resultShown=false;lastMove=game.history({verbose:true}).at(-1)||null;selected=null;hintSquare=null;persistPlay();renderBoard();updateGameStatus();refreshPlayPanel();
+  if(session.mode==='computer'&&game.turn()!==profile.settings.playerColor&&!session.result)void botMove();
 }
 async function hint() {
   if (busy) return;
@@ -518,7 +504,7 @@ async function hint() {
     else {hintSquare=drill.bestUci.slice(2,4);renderBoard();say(`The saved move is ${legalLine(drill.fen,drill.bestUci)[0]?.san||drill.bestUci}. Try it on the board, then explain the reply to yourself.`,true);}
     return;
   }
-  if (game.isGameOver() || game.turn() !== profile.settings.playerColor) return;
+  if (session.result || game.turn() !== profile.settings.playerColor || session.mode==='local') return;
   busy = true;
   const id = ++runId;
   updateGameStatus();
@@ -599,13 +585,14 @@ function renderSettings() {
   $("#level").value = profile.settings.level;
   $("#budget").value = profile.settings.budget;
   $("#save-settings").onclick = () => {
-    profile.settings = { name: $("#name").value.trim() || "Friend", tone: $("#tone").value, playerColor: $("#color").value, level: Number($("#level").value), budget: Number($("#budget").value) };
+    profile.settings = { ...profile.settings, name: $("#name").value.trim() || "Friend", tone: $("#tone").value, playerColor: $("#color").value, level: Number($("#level").value), budget: Number($("#budget").value) };
     save();
     toast("Preferences saved. Start a new game to apply your side.");
     shell();
   };
   $("#backup").onclick = backup;
   $("#restore").onchange = restore;
+  appearanceSettings();
   $("#reset-profile").onclick = () => {
     showDialog(`<div class="dialog-heading"><h2>Start a fresh journal?</h2><button class="icon-button" data-close aria-label="Close">×</button></div><p>This removes saved games, practice positions and preferences from this app on this device. Export a backup first if you want to keep them.</p><div class="dialog-actions"><button class="button secondary" id="cancel-reset">Keep my journal</button><button class="button danger-button" id="confirm-reset">Delete local profile</button></div>`);
     $("#cancel-reset").onclick = () => $("#modal").close();
@@ -662,7 +649,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && busy && view === "review") cancelAnalysis();
+  if(document.hidden){boardView?.cancel();if(busy){if(view==='review')cancelAnalysis();else {stop();updateGameStatus();}}}else if(view==='play'&&!session.result&&session.mode==='computer'&&game.turn()!==profile.settings.playerColor)void botMove();
 });
 window.addEventListener("beforeunload", () => engine.reset());
 window.addEventListener("online", () => {
@@ -674,16 +661,81 @@ window.addEventListener("offline", () => {
   if (c) c.innerHTML = "<i></i>Offline";
 });
 try{parsed=profile.currentPgn?parseGame(profile.currentPgn):profile.games[0]?parseGame(profile.games[0].pgn):null;}catch{parsed=null;}
+restorePlay();
 shell();
 void initAccount(user=>{
   stop();storageKey=user?'little-knight-user-'+user.id:'little-knight-profile';
   try{profile=validateProfile(JSON.parse(localStorage.getItem(storageKey)));}catch{profile=structuredClone(EMPTY_PROFILE);}
   try{parsed=profile.currentPgn?parseGame(profile.currentPgn):profile.games[0]?parseGame(profile.games[0].pgn):null;}catch{parsed=null;}
   review=[];scores=[];ply=0;revealed.clear();variation=null;drill=null;game=new Chess();savedPlayGame=game;savedPlayLastMove=null;lastMove=null;
-  messages=[{who:'knight',text:'Welcome to your own chess corner. Let’s find your next lesson.'}];view='review';shell();
+  messages=[{who:'knight',text:'Welcome to your own chess corner. Let’s find your next lesson.'}];session=new GameSession();game=session.game;savedPlayGame=game;restorePlay();view='home';shell();
 });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").then(async (registration) => {
   await navigator.serviceWorker.ready;
   toast("Practice files ready offline. Full analysis is cached after its first successful load.");
 }).catch(() => {
 });
+function canControl(square){
+  if(!['play','practice'].includes(view)||busy||promotionChoice)return false;
+  const p=game.get(square);return !!p&&p.color===game.turn()&&(view==='practice'||!session.result&&(session.mode==='local'||game.turn()===profile.settings.playerColor));
+}
+function applyAppearance(){
+  const s=profile.settings;s.theme??='walnut';s.pieces??='classic';s.motion??='subtle';
+  document.body.dataset.theme=s.theme;document.body.dataset.motion=s.motion;document.body.dataset.view=view;
+}
+function persistPlay(){
+  if(view==='practice')return;
+  try{localStorage.setItem(storageKey+'-session',JSON.stringify(session.serialize()));}catch{toast('Could not save this game. Export its PGN before leaving.');}
+}
+function restorePlay(){
+  try{const raw=localStorage.getItem(storageKey+'-session');if(raw)session=GameSession.restore(JSON.parse(raw));else session=new GameSession();}catch{session=new GameSession();}
+  game=session.game;savedPlayGame=game;lastMove=game.history({verbose:true}).at(-1)||null;savedPlayLastMove=lastMove;resultShown=false;
+}
+function soundMove(move){
+  if(!profile.settings.sound||document.hidden)return;
+  try{audio??=new AudioContext();void audio.resume();const osc=audio.createOscillator(),gain=audio.createGain(),t=audio.currentTime;osc.type='sine';osc.frequency.setValueAtTime(move.captured?240:440,t);osc.frequency.exponentialRampToValueAtTime(130,t+.065);gain.gain.setValueAtTime(.04,t);gain.gain.exponentialRampToValueAtTime(.001,t+.08);osc.connect(gain);gain.connect(audio.destination);osc.start(t);osc.stop(t+.09);}catch{/* Sound remains optional. */}
+}
+function renderHome(){
+  const continuing=!!session.game.history().length&&!session.result;
+  $('#main').innerHTML=`<section class="club-hero"><div class="club-copy"><div class="eyebrow"><span class="club-rule"></span> A SMALL CLUB. AN INFINITE GAME.</div><h1>Make room<br>for your<br><em>next move.</em></h1><p>For the quiet thrill of a good idea.<br>Play, explore, and learn a little about your chess.</p><div class="club-actions"><button class="button primary" id="hero-play">${continuing?'Continue your game':'Take a seat'} <span>↗</span></button><button class="text-button" id="hero-review">Bring a game to review →</button></div><div class="club-caption"><span class="status-dot"></span> Stockfish 18 · your board, your pace</div></div><div class="knight-scene" aria-hidden="true"><div class="scene-halo"></div><span class="scene-index">01 — THE KNIGHT</span><div class="scene-board"></div><div class="hero-knight">${pieceSVG({type:'n',color:'w'})}</div><div class="scene-orbit orbit-one"></div><div class="scene-orbit orbit-two"></div><div class="scene-coordinate">Nf3<span>A different way forward.</span></div></div></section><section class="club-modes"><div class="section-label">CHOOSE YOUR TABLE <span>NO WAITING ROOM.</span></div><div class="mode-grid"><button class="mode-card" id="mode-computer"><span class="mode-number">01</span><span class="mode-mark">♞</span><h2>A worthy<br>opponent.</h2><p>Five engine presets. Hints and takebacks when you want them.</p><span class="mode-link">Play the computer ↗</span></button><button class="mode-card" id="mode-local"><span class="mode-number">02</span><span class="mode-mark">♜</span><h2>One board.<br>Two minds.</h2><p>Pass the device. Untimed, uninterrupted, together.</p><span class="mode-link">Local two-player ↗</span></button><button class="mode-card" id="mode-learn"><span class="mode-number">03</span><span class="mode-mark">◇</span><h2>Follow your<br>curiosity.</h2><p>Explore six opening ideas and three verified mate-in-one challenges.</p><span class="mode-link">Open the study ↗</span></button></div></section><section class="club-note"><span>LESS NOISE.<br>MORE CHESS.</span><p>No camera. No microphone. Your games and practice history stay on your device. Optional account login is available; chess works without it.</p><button class="text-button" id="home-preferences">Make this space yours →</button></section>`;
+  $('#hero-play').onclick=()=>continuing?navigate('play'):gameSetup();$('#hero-review').onclick=()=>{navigate('review');if(!parsed)importDialog();};$('#mode-computer').onclick=()=>gameSetup('computer');$('#mode-local').onclick=()=>gameSetup('local');$('#mode-learn').onclick=()=>navigate('library');$('#home-preferences').onclick=()=>navigate('settings');
+  const scene=$('.knight-scene');let frame=0;scene.onpointermove=e=>{if(profile.settings.motion!=='full'||matchMedia('(prefers-reduced-motion: reduce)').matches||e.pointerType!=='mouse')return;const rect=scene.getBoundingClientRect();cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{scene.style.setProperty('--rx',((e.clientY-rect.top)/rect.height-.5)*-6+'deg');scene.style.setProperty('--ry',((e.clientX-rect.left)/rect.width-.5)*6+'deg');});};scene.onpointerleave=()=>{cancelAnimationFrame(frame);scene.style.setProperty('--rx','0deg');scene.style.setProperty('--ry','0deg');};
+}
+function gameSetup(mode=session.mode){
+  showDialog(`<div class="dialog-heading"><div><div class="eyebrow">TAKE YOUR SEAT</div><h2>A fresh possibility.</h2></div><button class="icon-button" data-close aria-label="Close">×</button></div><div class="setup-grid"><label>Game mode<select id="setup-mode"><option value="computer">Play the computer</option><option value="local">Local two-player</option></select></label><label>Computer difficulty<select id="setup-level">${PRESETS.map(p=>`<option value="${p.level}">${p.name}</option>`).join('')}</select></label><label>Your pieces<select id="setup-color"><option value="w">White</option><option value="b">Black</option></select></label><div><span class="field-label">Time control</span><p>Untimed · take the time to think.</p></div></div><p id="preset-description" class="small-muted"></p><details class="fen-details"><summary>Start from a FEN position</summary><label class="field-label" for="setup-fen">Optional FEN</label><input class="auth-input" id="setup-fen" placeholder="Leave empty for the starting position"></details><p class="small-muted">A new game replaces the saved play session. Export its PGN first if you want to keep it. Difficulty presets use engine skill controls; they are not calibrated Elo ratings.</p><p class="error-text" id="setup-error" role="alert"></p><button class="button primary full" id="setup-start">Let’s play ↗</button>`);
+  $('#setup-mode').value=mode;$('#setup-level').value=profile.settings.level;$('#setup-color').value=profile.settings.playerColor;
+  const update=()=>{const local=$('#setup-mode').value==='local';$('#setup-level').disabled=local;$('#setup-color').disabled=local;$('#preset-description').textContent=local?'One device, two players. Hints are disabled. Undo is allowed.':PRESETS.find(p=>p.level===Number($('#setup-level').value)).description;};$('#setup-mode').onchange=update;$('#setup-level').onchange=update;update();
+  $('#setup-start').onclick=()=>{try{const fen=$('#setup-fen').value.trim()||undefined;if(fen)new Chess(fen);const options={mode:$('#setup-mode').value,fen};profile.settings.level=Number($('#setup-level').value);profile.settings.playerColor=$('#setup-color').value;save();$('#modal').close();newGame(options);}catch(err){$('#setup-error').textContent='Could not start: '+err.message;}};
+}
+function enhancePlay(){
+  const local=session.mode==='local';document.body.dataset.view='play';
+  $('.page-heading h1').innerHTML=local?'A conversation.<br><em>In sixty-four squares.</em>':'Find your<br><em>next good idea.</em>';
+  $('.page-heading p').textContent=local?'Two players. One device. No engine assistance.':'A focused board, a thoughtful opponent, and room to improve.';
+  $('.board-top strong').textContent=local?'Local two-player':'Little Knight';$('.board-top .player-sub').textContent=local?'Untimed · no assistance':PRESETS.find(p=>p.level===profile.settings.level)?.name+' · Stockfish';$('.board-top .pill').textContent=local?'Shared board':'Practice';
+  $('#hint').disabled=local||!!session.result;$('#hint').title=local?'Hints are disabled in local two-player mode':'';
+  $('.review-column').insertAdjacentHTML('afterbegin',`<section class="live-history"><div class="card-heading"><h2>On the board</h2><button class="text-button" id="focus-toggle">Focus mode</button></div><div id="play-history"></div><div class="session-actions"><button class="text-button" id="resign">Resign</button><button class="text-button" id="claim-draw">Claim draw</button>${local?'<button class="text-button" id="agree-draw">Agree a draw</button>':''}<button class="text-button" id="play-export">Export PGN</button></div><p class="small-muted" id="session-help"></p></section>`);
+  $('#focus-toggle').onclick=()=>{document.body.classList.toggle('focus-mode');$('#focus-toggle').textContent=document.body.classList.contains('focus-mode')?'Show companion':'Focus mode';};
+  $('#resign').onclick=()=>{showDialog(`<div class="dialog-heading"><h2>Resign this game?</h2><button class="icon-button" data-close aria-label="Close">×</button></div><p>${local?(game.turn()==='w'?'White':'Black'):'You'} will resign. You can review the game afterwards.</p><button class="button primary" id="confirm-resign">Resign game</button>`);$('#confirm-resign').onclick=()=>{$('#modal').close();stop();session.resign(local?game.turn():profile.settings.playerColor);persistPlay();finishGame();};};
+  $('#claim-draw').onclick=()=>{try{stop();session.draw();persistPlay();finishGame();}catch(err){toast(err.message);}};
+  $('#agree-draw')?.addEventListener('click',()=>{showDialog(`<div class="dialog-heading"><h2>Do both players agree?</h2><button class="icon-button" data-close aria-label="Close">×</button></div><p>Confirm only when both players have agreed to a draw.</p><button class="button primary" id="confirm-draw">Both players agree</button>`);$('#confirm-draw').onclick=()=>{$('#modal').close();stop();session.draw(true);persistPlay();finishGame();};});
+  $('#play-export').onclick=()=>download('little-knight-game.pgn',game.pgn(),'application/x-chess-pgn');refreshPlayPanel();
+}
+function refreshPlayPanel(){
+  const el=$('#play-history');if(!el||view!=='play')return;const moves=game.history({verbose:true});
+  el.innerHTML=moves.length?moves.map((m,i)=>`${i%2===0?`<span class="history-number">${Math.floor(i/2)+1}.</span>`:''}<button class="history-move" data-history="${i+1}">${esc(m.san)}</button>`).join(''):'<p class="small-muted">Your first move starts the story.</p>';
+  el.scrollTop=el.scrollHeight;el.querySelectorAll('[data-history]').forEach(b=>b.onclick=()=>{stop();reviewPlayed();setPly(Number(b.dataset.history));});
+  $('#resign').disabled=!!session.result;$('#claim-draw').disabled=!!session.result||!session.claimable();if($('#agree-draw'))$('#agree-draw').disabled=!!session.result;
+  $('#session-help').textContent=session.result?session.result.reason+' · '+session.result.score:session.claimable()?'A draw may be claimed now: '+session.claimable()+'.':'3 repetitions / 50 moves: claimable. 5 repetitions / 75 moves: automatic.';
+  $('#hint').disabled=session.mode==='local'||!!session.result;
+}
+function appearanceSettings(){
+  $('.settings-grid').insertAdjacentHTML('afterbegin',`<section class="settings-card appearance-card"><div class="eyebrow">THE DETAILS ARE YOURS</div><h2>Make it feel like home.</h2><label class="setting-row"><span><strong>Board palette</strong></span><select id="board-theme"><option value="walnut">Walnut & ivory</option><option value="slate">Midnight slate</option><option value="olive">Olive club</option></select></label><label class="setting-row"><span><strong>Piece design</strong></span><select id="piece-style"><option value="classic">Sculpted</option><option value="outline">Outline</option></select></label><label class="setting-row"><span><strong>Motion</strong><small>Your system’s reduced-motion setting takes priority.</small></span><select id="motion-setting"><option value="off">Off</option><option value="subtle">Subtle</option><option value="full">Expressive</option></select></label><label class="setting-row"><span><strong>Move sounds</strong><small>Synthesised locally. No microphone access.</small></span><input id="sound-setting" type="checkbox" ${profile.settings.sound?'checked':''}></label><button class="button secondary" id="save-appearance">Save appearance</button></section>`);
+  $('#board-theme').value=profile.settings.theme;$('#piece-style').value=profile.settings.pieces;$('#motion-setting').value=profile.settings.motion;
+  $('#save-appearance').onclick=()=>{Object.assign(profile.settings,{theme:$('#board-theme').value,pieces:$('#piece-style').value,motion:$('#motion-setting').value,sound:$('#sound-setting').checked});save();applyAppearance();toast('Your space, just how you like it.');};
+}
+function renderLibrary(){
+  $('#main').innerHTML=heading('THE STUDY','A little curiosity.<br><em>A lot of possibilities.</em>','A curated starting point. Explore the ideas, then play them on your board.')+`<section class="library-section"><div class="section-label">OPENING IDEAS <span>SIX WAYS TO BEGIN.</span></div><div class="opening-grid">${OPENINGS.map((o,i)=>`<button class="opening-card" data-opening="${i}"><span class="eyebrow">${o.eco}</span><h2>${esc(o.name)}</h2><code>${esc(o.moves)}</code><p>${esc(o.idea)}</p><span class="mode-link">Explore the position ↗</span></button>`).join('')}</div></section><section class="library-section"><div class="section-label">FORCING IDEAS <span>THREE MATES IN ONE.</span></div><div class="puzzle-grid">${CHALLENGES.map((p,i)=>`<button class="puzzle-card" data-puzzle="${i}"><span class="mode-number">0${i+1}</span><h2>${esc(p.title)}</h2><p>${p.fen.split(' ')[1]==='w'?'White':'Black'} to move · checkmate in one</p><span class="mode-link">Find the finish ↗</span></button>`).join('')}</div></section>`;
+  document.querySelectorAll('[data-opening]').forEach(b=>b.onclick=()=>{const o=OPENINGS[Number(b.dataset.opening)],g=new Chess();o.moves.split(' ').forEach(m=>g.move(m));parsed=parseGame(g.pgn());review=[];scores=[];ply=parsed.moves.length;navigate('review');});
+  document.querySelectorAll('[data-puzzle]').forEach(b=>b.onclick=()=>startDrill(CHALLENGES[Number(b.dataset.puzzle)]));
+}
+

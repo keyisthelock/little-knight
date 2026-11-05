@@ -10,6 +10,10 @@ A local-first chess analysis website and offline Windows companion. Little Knigh
 
 ![Move explanation and interactive engine continuation](docs/images/coaching.jpg)
 
+## Quiet Club upgrade
+
+The new editorial home, original SVG pieces, drag/touch/keyboard board, local two-player mode, saved play sessions, draw claims, focus mode, opening library, verified challenges, themes, sound and motion preferences are implemented. See [audit and verification](docs/PREMIUM-UPGRADE.md). Production stays unchanged while the owner reviews the preview. Games are untimed; online matchmaking and clocks are not implemented.
+
 ## Features
 
 - **Your own games:** paste PGN or import a file, including custom starting positions. New profiles start empty; the demo is opt-in. Returning profiles reopen their own last game.
@@ -101,7 +105,7 @@ docs/             Deployment, architecture, screenshots
 
 ## Verification
 
-`npm test` currently runs **18 checks**: real engine evaluations and switching, exact WASM reconstruction, PGN validation, score perspective, legal teaching lines, distinct-game habits, hint-aware scheduling, backups, and authentication integration against real SQLite.
+`npm test` currently runs **28 checks**: real engine evaluations and switching, exact WASM reconstruction, PGN validation, score perspective, legal teaching lines, distinct-game habits, hint-aware scheduling, backups, and authentication integration against real SQLite.
 
 The deployed account service was smoke-tested for guest access, registration, authenticated session lookup, wrong passwords, login and logout. Browser checks covered a fresh profile's empty review, the login form, a completed full-engine review, explanation reveal, continuation stepping, and guided practice. These checks are not a security audit or evidence of learning outcomes.
 

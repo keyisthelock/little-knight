@@ -131,7 +131,11 @@ export function validateProfile(value) {
       tone: ["quiet", "friendly", "chatty"].includes(s.tone) ? s.tone : "friendly",
       budget: [300, 1e3, 3e3].includes(s.budget) ? s.budget : 1e3,
       level: [0, 3, 7, 12, 20].includes(s.level) ? s.level : 3,
-      playerColor: s.playerColor === "b" ? "b" : "w"
+      playerColor: s.playerColor === "b" ? "b" : "w",
+      theme:['walnut','slate','olive'].includes(s.theme)?s.theme:'walnut',
+      pieces:s.pieces==='outline'?'outline':'classic',
+      motion:['off','subtle','full'].includes(s.motion)?s.motion:'subtle',
+      sound:s.sound===true
     },
     ...(typeof value.currentPgn==='string'&&value.currentPgn.length<=250000?{currentPgn:parseGame(value.currentPgn).pgn}:{})
   };

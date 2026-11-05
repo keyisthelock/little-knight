@@ -10,4 +10,8 @@ export function makeServer() {return http.createServer((req,res)=>{
   try { const stat=fs.statSync(filename);if(!stat.isFile())throw new Error();res.writeHead(200,{'Content-Type':mime[path.extname(filename)]||'application/octet-stream','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'});fs.createReadStream(filename).pipe(res); }
   catch {res.writeHead(404,{'Content-Type':'text/plain'}).end('File not found');}
 });}
-if(process.argv[1]&&path.resolve(process.argv[1])===path.resolve('scripts/serve.mjs'))makeServer().listen(4173,'127.0.0.1',()=>console.log('Local: http://127.0.0.1:4173'));
+if(process.argv[1]&&path.resolve(process.argv[1])===path.resolve('scripts/serve.mjs')){
+ const port=Number(process.argv[2]||4173);
+ if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('Choose a port from 1024 to 65535.');
+ makeServer().listen(port,'127.0.0.1',()=>console.log('Local: http://127.0.0.1:'+port));
+}
